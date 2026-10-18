@@ -185,11 +185,33 @@ var VoiceReaderMath = (() => {
     return -1;
   }
 
-  function row(items) {
+  // "|x|" -> "the absolute value of x", "‖v‖" -> "the norm of v". A bar on its own is "given", as
+  // in P(A|B), or "such that" inside set brackets.
+  const BARS = { '|': 'the absolute value of', '∣': 'the absolute value of', '‖': 'the norm of', '∥': 'the norm of' };
+  const isBar = (n, bar) => name(core(n)) === 'mo' && (bar ? text(core(n)) === bar : text(core(n)) in BARS);
+
+  function row(items, inside = '') {
     const out = [];
     for (let i = 0; i < items.length; i++) {
       const n = items[i];
       const k = name(n);
+      if (isBar(n)) {
+        const bar = text(core(n));
+        const j = items.findIndex((x, at) => at > i + 1 && closingBracket(x) === bar);
+        if (j > 0) {
+          const closer = core(items[j]);
+          out.push(BARS[bar], row(items.slice(i + 1, j)) + ',', name(closer) === 'msup' ? powerWords(kids(closer)[1]) : '');
+          i = j;
+          continue;
+        }
+        if (bar === '|' || bar === '∣') {
+          const lone = !items.some((x, at) => at !== i && isBar(x, bar));
+          if (lone && i > 0 && i < items.length - 1) {
+            out.push(inside === '{' ? 'such that' : bar === '|' ? 'given' : 'divides');
+            continue;
+          }
+        }
+      }
       if (k === 'mo' && OPEN.has(text(n))) {
         if (text(n) === '(' && i > 0) {
           const prev = core(items[i - 1]);
@@ -212,9 +234,9 @@ var VoiceReaderMath = (() => {
           if (grouped) {
             const prev = i > 0 ? name(core(items[i - 1])) : '';
             if (prev && prev !== 'mo') out.push('times');
-            out.push('the quantity', row(inner) + ',', exp ? powerWords(exp) : '');
+            out.push('the quantity', row(inner, text(n)) + ',', exp ? powerWords(exp) : '');
           } else {
-            out.push(row(inner));
+            out.push(row(inner, text(n)));
           }
           i = j;
           continue;

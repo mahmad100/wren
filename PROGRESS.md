@@ -1,8 +1,8 @@
 # Wren: Progress
 
-My own Speechify replacement: a Chrome extension that reads pages aloud with sentence and word highlighting.
+My own Speechify replacement: a Chrome extension that reads pages, PDFs and Word documents aloud with sentence and word highlighting.
 
-## Status (2026-10-07)
+## Status (2026-10-18)
 
 | Version | Feature | Status |
 | --- | --- | --- |
@@ -10,10 +10,12 @@ My own Speechify replacement: a Chrome extension that reads pages aloud with sen
 | v0.2 | Natural AI voices (Kokoro, runs on the laptop's GPU) | ✅ Confirmed working in Chrome (Heart, 1× and 2×) |
 | v0.3 | Page map: list of sections to tick, untick, and jump to | ✅ Tested in Chrome |
 | v0.4 | Math read aloud (equations, Greek letters, symbols), with a box over equations | ✅ Tested in Chrome on "Mass–energy equivalence" |
-| v0.5 | Click to read, read just a selection, paragraph play buttons, Options panel (line focus, wider spacing, highlight colors, follow along) | ✅ Tested in Chrome. ⚠️ 4 last fixes not yet tried, see below |
+| v0.5 | Click to read, read just a selection, paragraph play buttons, Options panel (line focus, wider spacing, highlight colors, follow along) | ✅ Tested in Chrome; follow along and Back to reading checked again on 2026-10-18. ⚠️ 4 last fixes not yet tried, see below |
 | v0.6 | Renamed Wren. Animated logo. Apple-style glass player you can drag and dock (vertical on the sides). Appearance panel: logo, color, position lock, glass | ✅ Used in Chrome by the user (appearance panel, glass, panels). ⚠️ Last 3 fixes not yet tried, see below |
 | v0.7 | True pause and resume (carries on mid-word), shrink when not in use (with an on/off button on the bar), position picker fix | ✅ Shrink and picker used in Chrome by the user. ⚠️ Pause/resume not yet tried with real voices |
 | v0.7+ | AI voice starts faster after a click (short first piece, clips prepared before the click), × to close panels | ✅ The user tried it in Chrome: "it works". ⚠️ Not measured with the prepare-ahead, see Session 5 |
+| v0.8 | Library: a page for reading PDF and Word documents, with your place remembered. The toolbar icon on a PDF tab opens it there | ⚠️ Unchecked: not yet used by the user, or heard with an AI voice. Only the automatic checks in a hidden Chrome pass (`node test/library.mjs`) |
+| v0.9 | Library shows documents as their real pages (PDF pages drawn, Word laid out in pages), highlight on the words; Pages / Text switch | ⚠️ Unchecked by the user. 32 automatic checks pass, and screenshots of a two-column PDF and a styled Word file look right |
 
 ## Session 1 (2026-10-05)
 
@@ -120,27 +122,65 @@ My own Speechify replacement: a Chrome extension that reads pages aloud with sen
 
 **Testing notes:** content-script `console.log` doesn't reach my console reader; write to `document.documentElement.dataset` instead and read it from the page. The Chrome window must be uncovered (side by side with the terminal), or `document.visibilityState` is `hidden` and timings are wrong. The test tab is opened in the Claude tab group; the user has to reload Wren and click the icon *in that tab*.
 
+## Session 6 (2026-10-11): open problems, and the library (v0.8)
+
+**Bugs found by reading the code, and fixed**
+- **Endless loop after an extension reload:** closing the player messaged the extension again whenever reading was *paused*, which failed, which closed the player again. Once the extension can't be reached, nothing more is sent to it (`orphan` in `content.js`). A newly loaded reader also tells the old one left on the page to take its player away, so there aren't two.
+- **Paragraph play button** stayed if the pointer left the window from the paragraph. It now goes after 0.5 s.
+- **Math:** |x| was silent. Now "the absolute value of x", ‖v‖ "the norm of v", a single bar "given" (P(A|B)) or "such that" (in set brackets). Checked on 8 small equations in Node.
+- The reader answered every message it saw, which would have confused two open library tabs. It now answers only its own.
+
+**Checked in a hidden Chrome** (new: Chrome driven by a script, with Wren loaded, a Microsoft voice, sound off)
+- Pause and resume with a real built-in voice: "Microsoft David" confirms both (`pause` and `resume` events), and reading held its place and carried on to the end. Google and AI voices can't be tried this way (no Google voices or graphics chip in a hidden Chrome).
+- The toolbar icon on a web page starts the reader.
+
+**Built v0.8: the library** (`library/`), for PDF and Word documents
+- A page of the extension with a shelf of documents and a reading view. Add by dropping files or **Add documents**. Kept in IndexedDB on this computer: the file, its text, and the sentence you stopped at.
+- The reading view loads `content.js` itself, so the player, voices, page map, click to read and Options are the same as on a web page. Speech events do reach an extension page through `chrome.tabs.sendMessage` (this was the open risk; tested).
+- **PDF** (PDF.js): lines are rebuilt from text positions, then paragraphs (gaps, indents, short last lines) and headings (bigger text, or a short bold line at the margin; "3.2" is one level below "3"). Page numbers and repeated headers and footers are dropped, hyphenated line ends joined, sentences carried across pages and columns.
+- **Word** (Mammoth): headings, lists, tables and pictures kept; footnote marks shown but not read.
+- **PDF in a Chrome tab:** Chrome now lets the reader into a PDF tab, where it found no text. It now notices the PDF and asks the service worker to fetch it into the library (`readPdf`). The icon on a new tab opens the library. A pages button on the player bar opens it too.
+- Tried on two real papers: "Attention Is All You Need" (191 blocks in 0.4 s, all 22 numbered headings found at the right level) and the two-column BERT paper (read in column order, 30 headings).
+- Tests live in `wren-build/test/`: `node test/library.mjs` (25 checks) and `node test/try.mjs <file>` to see what a file becomes.
+
+**Decided:** Δ is still read "delta", like δ. "Capital delta E" is clumsier than what people say. Change `GREEK` in `math-speech.js` if it turns out to matter.
+
+## Session 7 (2026-10-18): follow along checked, real pages in the library (v0.9), iPhone ideas
+
+**Follow along tested in Chrome** (Dyslexia article, built-in voice): the page came back to the reading after being moved 3000 px away; scrolling with the wheel stopped following for 15 s and showed Back to reading; the button scrolled back and followed again; scrolling back by hand picked following up again at the next sentence; scrolling the page map didn't stop following. Not tried: scrolling away while paused (by design, play then jumps back to the sentence).
+
+**Built v0.9: documents as their real pages** (the user wanted them read over in their original form, not converted)
+- The original file was already kept; now it's shown. A **Pages / Text** switch in the library's top bar (remembered in `chrome.storage.local` as `libraryView`), Pages by default.
+- **PDF** (`library/pages.js`): pages drawn with PDF.js, only those on or near the screen, and redrawn sharp when the window changes size (`--k` zoom fits the width, up to 1.75×). The text is laid over the pages, invisible, from the same blocks `convert.js` makes for the text view, so both views have the same sentences (checked: 12 and 12, 32 and 32). Each run of text is placed where it's drawn and stretched to its width (as PDF.js's own text layer does). A hyphen splitting a word at a line end is shown but not read. The layer multiplies with the page, so the highlight shows the words through it. Wider spacing is switched off on PDF pages.
+- **Word:** docx-preview 0.4.1 (Apache-2.0, plus JSZip 3.10.2, MIT) lays it out in pages with its fonts, colors, lists and tables. Paragraphs in heading styles get `role="heading"` for the page map; page headers are shown but not read; only web links are kept.
+- `content.js`: headings can be `role="heading" aria-level`, and `data-wren-run` pieces read as one line. `WrenReader.open(idx, of)` moves the place to the same distance through when a view splits the document differently (Word).
+- Fixed: a Word file's Title style was ignored by Mammoth, so its title came from the first Heading 1. `VERSION` is 2, so stored texts are remade once.
+- Tried on a two-column, justified PDF that Chrome printed and a styled .docx made with python-docx, in a hidden Chrome: layout, highlight, page map, narrow window. Not yet tried on a real LaTeX paper or a long PDF (hundreds of pages), or by the user.
+
+**iPhone:** no app can draw over other apps on iOS. Options discussed: iOS Speak Screen (free, today); a Wren app with a Share → "Read with Wren" extension, background audio, a Live Activity in the Dynamic Island and a Shortcut for the Action Button or Back Tap (Expo, built in the cloud with EAS, so no Mac needed, but a $99/year Apple Developer account); later a Safari extension made from this one. Waiting on the user: Apple Developer account, and whether it's mainly for Safari or for anything.
+
+**Not committed:** the work of Sessions 6 and 7 (v0.8 library and v0.9 pages) is still only on this computer; the last commit is the v0.7+ faster start. Build-folder changes (docx-preview and JSZip added to `package.json`, `build.mjs`, `test/library.mjs`, `test/try.mjs`) live in `wren-build`, which isn't in git.
+
 ## Next session: start here
 
-0. **Measure the faster start** (window side by side, tab visible): click with and without resting first, while reading and while stopped. Listen for a gap where a sentence is split. If a resting pointer still waits, the guess may be waiting behind a clip already being made.
+**First, commit and push** Sessions 6 and 7 (no Claude attribution line), unless the user wants to try them first.
 
-1. **If the folder is still `Projects/voice-reader`, rename it to `wren`** (close Claude Code, VS Code's folder and maybe Chrome first). Then in `chrome://extensions` remove Wren and *Load unpacked* the `wren` folder, since Chrome remembers the old path. Saved Wren settings may reset. `node build.mjs` fails until the folder is renamed.
-2. **Try pause and resume with real voices:** a Windows voice (Microsoft …), Google US English, and an AI voice (Heart). Pause mid-sentence, wait, resume: it should carry on mid-word. Also pause for over 10 minutes with an AI voice (should resume from the word).
-3. **Check the last v0.6 fixes in Chrome:** scrolling inside a panel (shouldn't move the page), the Both/Sentence/Word switch, and triple-clicking a paragraph then pressing its play button (should read the whole paragraph). Also try the glass slider and a locked drag by hand.
-4. **Check the four v0.5 fixes**, still never tried in Chrome:
-   - Starting mid-sentence (click or selection) with an AI voice took 25+ s, because the voice prepared sentences strictly in order. `offscreen.js` now puts what you're waiting for first. Expected: a 1–3 s wait at most.
-   - The paragraph play button never went away if the pointer kept moving after leaving the paragraph. It now goes 0.5 s after leaving.
-   - Line focus dimmed the whole page while scrolled away from the sentence being read. It now steps aside.
-   - A reader left open during an extension reload got stuck in an endless loop of errors (an old bug).
-5. My tests switched on line focus, wider spacing and a green highlight in the user's settings. Switch them back in Options if not wanted.
-6. **Listen to math on a few more pages** and tune the wording: Wikipedia "Normal distribution", "Schrödinger equation", "Quadratic formula". Open questions: say "capital" for Δ vs δ? Absolute value bars |x| are silent.
-7. Other ideas: skip-content switches (citations, brackets, URLs), a size setting for the player, tables read row by row, PDF support (PDF.js), Google Docs.
+0. **Reload Wren in `chrome://extensions`** (it's now 0.9.0), then try the library by hand: right-click the Wren icon → *Open the Wren library*, drop in a real PDF and a .docx, and listen with an AI voice. Check the highlight sits on the words in Pages view, and try the Pages / Text switch. Try a long PDF (100+ pages) for speed. Click the icon on a PDF open in a tab. Tell me where the text comes out wrong; `node test/try.mjs <file>` shows me the same thing.
+1. **Measure the faster start** (window side by side, tab visible): click with and without resting first, while reading and while stopped. Listen for a gap where a sentence is split. If a resting pointer still waits, the guess may be waiting behind a clip already being made.
+2. **Listen to pause and resume:** it works with a Microsoft voice in the test, but nobody has heard it. Try Google US English and an AI voice (Heart) too. Pause mid-sentence, wait, resume: it should carry on mid-word. Also pause for over 10 minutes with an AI voice (should resume from the word).
+3. **Check the last v0.6 fixes in Chrome:** the Both/Sentence/Word switch, and triple-clicking a paragraph then pressing its play button (should read the whole paragraph). Also try the glass slider and a locked drag by hand.
+4. **Check the v0.5 fixes by hand:** the paragraph play button going away, line focus stepping aside when scrolled away, and reloading the extension with a reader open and paused (the player should just close).
+5. My tests in earlier sessions switched on line focus, wider spacing and a green highlight in the user's settings. Switch them back in Options if not wanted.
+6. **Listen to math on a few more pages** and tune the wording: Wikipedia "Normal distribution", "Schrödinger equation", "Quadratic formula", "Absolute value".
+7. Library ideas: leave out the words inside figures, show scanned PDFs as pages even with no text, OCR for scans, zoom buttons for Pages view, EPUB and plain text.
+8. Other ideas: skip-content switches (citations, brackets, URLs), a size setting for the player, tables read row by row, Google Docs.
+9. **iPhone:** waiting on the user (Apple Developer account? mainly Safari, or anything?). See Session 7 for the options; the recommended one is an Expo app with a Share extension.
 
-**Testing note:** my Chrome tool can't press browser-level shortcuts or the toolbar icon, and Alt+Shift+letter keys hit the page's own shortcuts. The user has to reload the extension and click the icon; after that I can drive the player bar.
+**Testing note:** my Chrome tool can't press browser-level shortcuts or the toolbar icon in the user's Chrome, and Alt+Shift+letter keys hit the page's own shortcuts. The user has to reload the extension and click the icon; after that I can drive the player bar. The scripted Chrome in `wren-build/test/` can click the icon, but has no graphics chip, so no AI voices.
 
 ## Where things live
 
 - Extension (load this folder in Chrome): `Projects/wren/`
 - GitHub (public): https://github.com/mahmad100/wren. The GitHub CLI is at `%LOCALAPPDATA%\Microsoft\WinGet\Packages\GitHub.cli_*\bin\gh.exe`, logged in as mahmad100.
-- AI voice build tooling (kept outside OneDrive): `C:\Users\mahmad10\wren-build` → `node build.mjs`
+- Build tooling and tests (kept outside OneDrive): `C:\Users\mahmad10\wren-build` → `node build.mjs`, `node test/library.mjs`
 - Details on using it and how it works: `README.md`

@@ -1,6 +1,6 @@
 # Wren
 
-A Chrome extension that reads web pages aloud and highlights each sentence and word as it is spoken. It can use built-in voices or natural AI voices that run on your own computer.
+A Chrome extension that reads web pages, PDFs and Word documents aloud and highlights each sentence and word as it is spoken. It can use built-in voices or natural AI voices that run on your own computer.
 
 Current status and next steps are in [PROGRESS.md](PROGRESS.md).
 
@@ -18,6 +18,8 @@ After changing any file, click the reload arrow on the extension's card in `chro
 | Action | How |
 | --- | --- |
 | Read the page | Click the toolbar icon, or press **Alt+Shift+R** |
+| Read a PDF or Word file | Open the library (see *The library*) and drop the file in |
+| Read a PDF open in a tab | Click the toolbar icon on it. It opens in the library |
 | Pause / resume | Same again, or the big button on the player bar. Resume carries on mid-word, from exactly where it paused |
 | Read from a word | With the player open, **click** any text (see *Starting where you point*) |
 | Read just some text | Select it, then press the play button that appears next to it, or right-click → *Read selected text* |
@@ -27,6 +29,7 @@ After changing any file, click the reload arrow on the extension's card in `chro
 | Slower / faster | **Alt+Shift+↓** / **Alt+Shift+↑**, or **−** / **+** on the bar |
 | Choose a voice | The voice button on the bar (it shows the voice's name) |
 | Page map / Options | The list and ⚙ buttons on the bar |
+| Open the library | The pages button on the bar, or right-click the toolbar icon → *Open the Wren library* |
 | Move the player | Drag it by the logo or any empty part of the bar |
 | Change the logo, color, glass or position | Click the logo on the bar |
 | Shrink when not in use | The inward-arrows button next to **×** turns it on or off (highlighted when on) |
@@ -56,6 +59,20 @@ Modeled on Speechify and NaturalReader. Each one can be switched on or off in **
 
 Buttons that appear on hover follow the Nielsen Norman Group's timing guidance, so they don't flicker as the pointer passes over the page: they show after the pointer has rested for 0.4 s, and go 0.5 s after it leaves.
 
+## The library
+
+A page inside Wren for reading PDF and Word (.docx) documents. Open it from the pages button on the player bar, by right-clicking the toolbar icon → *Open the Wren library*, or by clicking the toolbar icon on a new tab.
+
+- **Add documents:** drop files anywhere on the page, or press **Add documents**. Several can be added at once. One file added on its own opens straight away.
+- **A PDF open in a Chrome tab:** click the toolbar icon on it. Wren adds it to the library and opens it there. If the site won't let Wren fetch the file, the library says so: download the PDF and drop it in.
+- **Pages or Text** (the switch at the top, remembered): **Pages**, the default, shows the document as it looks: a PDF's real pages, or a Word file laid out in pages with its own fonts, colors, lists and tables. The highlight lands on the words on the page. **Text** shows it as plain text in one column, which *Wider text spacing* in Options can space out (it doesn't apply to PDF pages, as the words are drawn there). Both read the same sentences, and switching keeps your place.
+- **Reading:** the player, voices, page map, click to read and Options all work as on a web page. "References" onwards starts unticked. A Word file's page header is shown but not read.
+- **The original file is kept:** the library stores each file as it was added, and shows its pages from it.
+- **Your place is remembered:** each card on the shelf shows how far you've read, and a document opens at the sentence where you stopped. **Listen** at the top brings the player back if you've closed it.
+- **Private:** documents are kept in Chrome on this computer and never sent anywhere. The × on a card removes one.
+
+How a PDF becomes text: a PDF only records where each bit of text sits on the page, so Wren puts lines, paragraphs and headings back together. Page numbers and repeated headers and footers are dropped, words split at a line end with a hyphen are joined, and two-column papers are read in order. In the Pages view, each page is drawn by PDF.js and the same text is laid over it, invisible, piece by piece where it's drawn, so it can be highlighted, clicked and selected.
+
 ## Options for easier reading
 
 Choices aimed at dyslexic readers, all in **Options**:
@@ -79,7 +96,7 @@ The page map lists the article's sections, one per heading, nested by level, wit
 Equations are read aloud instead of skipped, for example *E = mc²* becomes "E equals m c squared", and *γ = 1/√(1 − v²/c²)* becomes "gamma equals 1 over the square root of 1 minus v squared over c squared". While an equation is being read, a yellow box is drawn over it, since many sites show equations as images that the normal highlight can't color.
 
 - Works with Wikipedia, MathJax, KaTeX, and plain MathML. Equations are read from the machine-readable copy these sites keep behind each equation. If there's only TeX source, a simpler reading of it is used.
-- Covers powers ("squared", "to the power of"), subscripts ("v sub 0"), fractions, roots, sums and integrals with limits, limits, brackets ("the quantity a plus b, squared"), accents ("x hat", "vector F") and common operators.
+- Covers powers ("squared", "to the power of"), subscripts ("v sub 0"), fractions, roots, sums and integrals with limits, limits, brackets ("the quantity a plus b, squared"), absolute values and norms ("the absolute value of x"), accents ("x hat", "vector F") and common operators. A single bar is "given", as in P(A|B), or "such that" inside set brackets.
 - Greek letters are named, in equations and in ordinary text ("the α-helix" → "the alpha-helix"). Greek words are left alone, and "μm" is read as "micro m".
 - Some names are respelled so the voices say them right: Kokoro reads "xi" as "Roman eleven" and "mu" as "moo", so they're sent as "zye" and "mew".
 
@@ -105,10 +122,11 @@ The voice menu's first group, **Natural AI voices**, uses [Kokoro](https://huggi
 - `math-speech.js` turns equations (MathML) and math symbols into spoken English. It is injected just before `content.js`, which keeps two versions of the text: what's spoken, and where each part sits on the page, so an equation spoken as several words is highlighted as one unit.
 - `wren-mark.js` draws the three logos and holds the five color palettes. The logo moves slowly while reading, on the player bar (in a circle) and in the toolbar icon (a rounded square). `background.js` sets the toolbar icon to the chosen logo. The PNG icons in `icons/` are Soundtail in Ember; after changing the drawing, run `node icons/build.mjs` to remake them with Chrome.
 - `offscreen/` holds the AI voice engine: a hidden extension page (`offscreen.js`) that runs Kokoro on the GPU and plays the audio. It makes one clip at a time: what the reader is waiting to hear goes first, then a guess at where you'll start next (only the latest guess is kept), then read-ahead. `kokoro.bundle.js` and `ort/` are generated files; don't edit them by hand.
+- `library/` is the library page. `store.js` keeps documents in IndexedDB (the file, its text, and your place). `convert.js` turns a file into headings and paragraphs: PDFs with PDF.js, rebuilding lines and paragraphs from the position and size of each piece of text, and Word files with Mammoth. Only plain text markup is kept. `pages.js` shows the real pages: for a PDF it draws the pages on or near the screen with PDF.js and lays the text from `convert.js` over them (each run of text stretched to its width on the page, sized with a `--k` zoom that fits the window); for Word it uses docx-preview, and marks paragraphs in heading styles with `role="heading"` for the page map. The page then loads `content.js` itself, so documents are read by the same reader as web pages. `vendor/` holds PDF.js, Mammoth, JSZip and docx-preview, copied in by the build; don't edit them by hand.
 
-### Rebuilding the AI voice bundle
+### Rebuilding the bundled code
 
-The bundle is built in `C:\Users\mahmad10\wren-build`. That folder is kept outside OneDrive so OneDrive doesn't sync `node_modules`. To update Kokoro:
+The AI voice bundle is built in `C:\Users\mahmad10\wren-build`. That folder is kept outside OneDrive so OneDrive doesn't sync `node_modules`. To update Kokoro:
 
 ```
 cd C:\Users\mahmad10\wren-build
@@ -116,9 +134,18 @@ npm update kokoro-js
 node build.mjs
 ```
 
-## Known limits (v0.7)
+The same build copies PDF.js, Mammoth, JSZip and docx-preview into `library/vendor/` (run `npm update pdfjs-dist mammoth jszip docx-preview` first to update them). After a rebuild, update the versions in `THIRD_PARTY_NOTICES.md`.
 
-- **Can't run on:** Chrome's built-in PDF viewer, `chrome://` pages, or the Chrome Web Store. Google Docs draws its text in a way the extension can't read yet.
+### Testing
+
+`node test/library.mjs`, run in the same folder, loads Wren into a hidden Chrome and tries the library: adding a PDF and a Word file, showing them as pages and as text (the PDF's text and highlight sitting on its drawn words), reading with a built-in voice, pause and resume, remembering the place, and the toolbar icon on a web page, a PDF tab and the library tab. `node test/try.mjs <file>` prints the headings and paragraphs Wren makes of a PDF or Word file, for tuning `convert.js`.
+
+## Known limits (v0.9)
+
+- **Can't run on:** `chrome://` pages or the Chrome Web Store. Google Docs draws its text in a way the extension can't read yet.
+- **PDFs:** words inside figures and tables are read as they come, and a figure in the middle of a paragraph splits it. On the pages, the highlight follows each run of text stretched to its width, so on some fonts it can sit a little off a word's edges. Pages turned sideways aren't laid out right. Equations come out as loose symbols. A real hyphen at a line end is lost from the reading ("sequence-aligned" is read "sequencealigned"). Scanned PDFs (pictures of pages) have no text to read. A PDF on this computer opened in a tab (`file://`) needs *Allow access to file URLs* switched on for Wren in `chrome://extensions`; or just drop the file into the library.
+- **Word pages:** laid out by docx-preview, which is close to Word but not exact: page breaks fall where Word last saved them, and fonts that aren't on this computer are swapped for similar ones. Table cells are read one by one.
+- **Word:** .docx only (save old .doc files as .docx). Equations written with Word's equation editor are left out.
 - **Speed limits:** Google voices top out around 2× speed. Windows voices go faster.
 - **Math:** matrices and multi-line derivations are read row by row, and very long equations can be hard to follow by ear. Equation boxes don't follow equations inside separately scrolling areas.
 - **AI voice after a jump:** if a clip is already being made, it finishes first (up to about 1–2 s). A click with no pause on the word first, on a sentence with no comma near its start, waits about 1 s.
@@ -127,7 +154,8 @@ node build.mjs
 ## Ideas for next versions
 
 - Reading tables row by row, and image descriptions
-- PDF support with PDF.js
+- Reading scanned PDFs (OCR)
+- Other files in the library: EPUB, plain text, web pages saved for later
 - Google Docs support
 - Skip-content switches (citations, brackets, URLs), like Speechify's
 - A size setting for the player (small, medium, large)
@@ -138,4 +166,4 @@ Copyright (C) 2026 Mohammad Ahmadi.
 
 Wren is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but without any warranty. See [LICENSE](LICENSE) for the full text.
 
-The AI voice engine includes open-source code from other projects (Kokoro, Transformers.js, phonemizer, eSpeak NG, ONNX Runtime). Their licenses and credits are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). GPL-3.0 was chosen because eSpeak NG, which turns text into speech sounds for the AI voices, is GPL-3.0.
+The AI voice engine includes open-source code from other projects (Kokoro, Transformers.js, phonemizer, eSpeak NG, ONNX Runtime), and the library includes PDF.js, Mammoth, JSZip and docx-preview. Their licenses and credits are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). GPL-3.0 was chosen because eSpeak NG, which turns text into speech sounds for the AI voices, is GPL-3.0.

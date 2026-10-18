@@ -2,8 +2,9 @@
 // Speech runs here (not in the page) so it needs no page click to start and isn't
 // affected by the site's own scripts or security policy.
 
-importScripts('wren-mark.js');
+importScripts('wren-mark.js', 'library/store.js');
 
+const MENU_LIBRARY = 'vr-library';
 const MENU_PAGE = 'vr-read-page';
 const MENU_SELECTION = 'vr-read-selection';
 const MENU_SELECTION_ONLY = 'vr-read-selection-only';
@@ -108,7 +109,9 @@ async function stopAll() {
 // Wake at browser start, so the toolbar icon is set from the chosen logo (above).
 chrome.runtime.onStartup.addListener(() => {});
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.contextMenus.removeAll();
+  chrome.contextMenus.create({ id: MENU_LIBRARY, title: 'Open the Wren library (PDF and Word)', contexts: ['action'] });
   chrome.contextMenus.create({ id: MENU_PAGE, title: 'Read this page aloud', contexts: ['page'] });
   chrome.contextMenus.create({ id: MENU_SELECTION_ONLY, title: 'Read selected text', contexts: ['selection'] });
   chrome.contextMenus.create({ id: MENU_SELECTION, title: 'Read aloud from here', contexts: ['selection'] });
@@ -121,6 +124,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === MENU_LIBRARY) return openLibrary();
   const type = { [MENU_SELECTION]: 'readSelection', [MENU_SELECTION_ONLY]: 'readSelectionOnly' }[info.menuItemId] || 'readPage';
   sendToTab(tab, { type });
 });
@@ -139,6 +143,7 @@ async function sendToTab(tab, msg) {
     await chrome.tabs.sendMessage(tab.id, msg);
   } catch (err) {
     // chrome:// pages, the Web Store and Chrome's PDF viewer can't be scripted.
+    if (await readInLibrary(tab)) return;
     console.warn('[Wren] cannot read this tab:', err?.message);
     chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#d93025' });
     chrome.action.setBadgeText({ tabId: tab.id, text: '!' });
@@ -147,9 +152,69 @@ async function sendToTab(tab, msg) {
   }
 }
 
+// ---------- The library: a page of this extension for reading PDF and Word documents ----------
+
+const LIBRARY_URL = chrome.runtime.getURL('library/library.html');
+
+// Open the library on its shelf (going to its tab if it's already open), or on one document.
+async function openLibrary(hash = '', beside = null) {
+  if (!hash) {
+    const [open] = (await chrome.runtime.getContexts({ contextTypes: ['TAB'] })).filter((c) => c.documentUrl?.startsWith(LIBRARY_URL));
+    if (open) {
+      await chrome.tabs.update(open.tabId, { active: true });
+      chrome.windows.update(open.windowId, { focused: true }).catch(() => {});
+      return;
+    }
+  }
+  chrome.tabs.create({ url: LIBRARY_URL + hash, ...(beside ? { index: beside.index + 1, openerTabId: beside.id } : {}) });
+}
+
+// The toolbar icon was clicked on a tab the reader can't be put into. A PDF is added to the
+// library and opened there, and a new tab opens the library. True if either was done.
+async function readInLibrary(tab, isPdf = false) {
+  const url = tab.url || '';
+  if (/^(chrome|edge):\/\/(newtab|new-tab-page)/.test(url)) {
+    openLibrary();
+    return true;
+  }
+  if (!/^(https?|file):/.test(url)) return false;
+  const known = (await WrenStore.list()).find((d) => d.source === url);
+  if (known) {
+    openLibrary(`#doc=${known.id}`, tab);
+    return true;
+  }
+  const looksLikePdf = isPdf || /\.pdf$/i.test(new URL(url).pathname);
+  let blob;
+  try {
+    const res = await fetch(url);
+    if (!(looksLikePdf || /pdf/i.test(res.headers.get('content-type') || ''))) return false;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    blob = await res.blob();
+  } catch {
+    // The site doesn't let the file be fetched from here (or it's a file on this computer and
+    // Wren isn't allowed file access). The library says how to add it by hand.
+    if (!looksLikePdf) return false;
+    openLibrary('#blocked', tab);
+    return true;
+  }
+  const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || '') || 'Document.pdf';
+  const doc = await WrenStore.add({ name: /\.pdf$/i.test(name) ? name : `${name}.pdf`, kind: 'pdf', blob, source: url });
+  openLibrary(`#doc=${doc.id}`, tab);
+  return true;
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.target === 'offscreen') return; // meant for the AI voice page, not us
   switch (msg.type) {
+    case 'readPdf':
+      // From the reader on a tab showing a PDF (see content.js).
+      if (sender.tab) readInLibrary(sender.tab, true);
+      return;
+
+    case 'openLibrary':
+      openLibrary('', sender.tab);
+      return;
+
     case 'getVoices':
       chrome.tts.getVoices((voices) => {
         sendResponse([...AI_VOICES, ...voices.map((v) => ({

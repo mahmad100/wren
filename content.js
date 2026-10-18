@@ -3,6 +3,11 @@
 (() => {
   if (window.__voiceReaderLoaded) return;
   window.__voiceReaderLoaded = true;
+  // After the extension is reloaded, the reader left on an open page can't reach it any more.
+  // The new one says it has arrived, and the old one takes its player off the page.
+  const TAKEOVER = 'voice-reader-takeover';
+  document.dispatchEvent(new Event(TAKEOVER));
+  document.addEventListener(TAKEOVER, () => orphan(), { once: true });
 
   // ---------- Constants ----------
 
@@ -101,6 +106,13 @@
     return el.getClientRects().length > 0;
   }
 
+  // 1 to 6 for a heading (<h2>, or <p role="heading" aria-level="2">), 0 for anything else.
+  function headingLevel(el) {
+    const tag = /^H(\d)$/.exec(el.tagName);
+    if (tag) return +tag[1];
+    return el.getAttribute('role') === 'heading' ? Math.min(6, Math.max(1, +el.getAttribute('aria-level') || 2)) : 0;
+  }
+
   function directTextLength(el) {
     let n = 0;
     for (const c of el.childNodes) if (c.nodeType === Node.TEXT_NODE) n += c.data.trim().length;
@@ -158,7 +170,8 @@
   // All readable blocks in page order, plus the index of the heading where the article proper
   // ends ("References", "External links", ...), or -1 if there isn't one.
   function collectBlocks() {
-    const root = findContentRoot();
+    // The library page marks the document it's showing; on other pages the article is searched for.
+    const root = document.querySelector('[data-wren-document]') || findContentRoot();
     contentRoot = root;
     const isBody = root === document.body;
     const blocks = findCandidates(root).filter((el) => {
@@ -166,7 +179,7 @@
       if (footer && root.contains(footer)) return false;
       if (isBody && el.closest(HEADER_SEL)) return false;
       const len = el.textContent.trim().length;
-      if (!/^H\d$/.test(el.tagName) && len < 120 && linkDensity(el, len) > 0.6) return false;
+      if (!headingLevel(el) && len < 120 && linkDensity(el, len) > 0.6) return false;
       return true;
     });
     // Article titles often sit just outside the article body.
@@ -177,7 +190,7 @@
         !h.closest(SKIP_SEL) && isVisible(h));
       if (title) blocks.unshift(title);
     }
-    const end = blocks.findIndex((el, i) => i > 2 && /^H\d$/.test(el.tagName) && END_HEADING.test(el.textContent.trim()));
+    const end = blocks.findIndex((el, i) => i > 2 && headingLevel(el) && END_HEADING.test(el.textContent.trim()));
     return { blocks, end };
   }
 
@@ -187,6 +200,8 @@
 
   function layoutBlock(el, stop) {
     for (; el && el !== stop; el = el.parentElement) {
+      // The library's PDF pages place each run of text on its own, but a line reads as one.
+      if (el.hasAttribute('data-wren-run')) continue;
       let display = displayCache.get(el);
       if (display === undefined) {
         display = getComputedStyle(el).display;
@@ -366,12 +381,12 @@
     const sections = [];
     let sec = null;
     blocks.forEach((el, i) => {
-      const heading = /^H(\d)$/.exec(el.tagName);
-      if (heading || !sec) {
-        const title = heading ? buildModel(el).text.replace(/\s+/g, ' ').trim() : '';
+      const level = headingLevel(el);
+      if (level || !sec) {
+        const title = level ? buildModel(el).text.replace(/\s+/g, ' ').trim() : '';
         // Everything from "References" on starts unticked, as reading used to stop there.
-        sec = makeSection(title || (heading ? 'Untitled section' : 'Introduction'),
-          heading ? +heading[1] : 1, [], end < 0 || i < end);
+        sec = makeSection(title || (level ? 'Untitled section' : 'Introduction'),
+          level || 1, [], end < 0 || i < end);
         sections.push(sec);
       }
       sec.blocks.push(el);
@@ -708,7 +723,10 @@
 
   // ---------- Speech ----------
 
+  let orphaned = false; // the extension was reloaded or removed while this page stayed open
+
   function send(msg) {
+    if (orphaned) return Promise.resolve();
     try {
       return chrome.runtime.sendMessage(msg).catch(onExtensionError);
     } catch (err) {
@@ -717,14 +735,24 @@
     }
   }
 
-  function onExtensionError(err) {
-    // The extension was reloaded or removed while this page stayed open.
-    if (/context invalidated/i.test(String(err?.message || err))) {
-      state.gen++;
-      clearTimers();
-      state.playing = false; // or teardown would try to message the extension again, and loop
-      teardown();
+  function save(values) {
+    if (orphaned) return;
+    try {
+      chrome.storage.sync.set(values).catch(onExtensionError);
+    } catch (err) {
+      onExtensionError(err);
     }
+  }
+
+  function onExtensionError(err) {
+    if (/context invalidated/i.test(String(err?.message || err))) orphan();
+  }
+
+  // Nothing more can be sent to the extension, so close the player without trying to.
+  function orphan() {
+    if (orphaned) return;
+    orphaned = true;
+    teardown();
   }
 
   function usableVoices() {
@@ -1117,7 +1145,7 @@
 
   function setRate(rate) {
     settings.rate = Math.round(Math.max(RATE_MIN, Math.min(RATE_MAX, rate)) * 10) / 10;
-    chrome.storage.sync.set({ rate: settings.rate }).catch(() => {});
+    save({ rate: settings.rate });
     if (state.playing) speakCurrent(); // carry on from the word at the new speed
     else if (state.paused?.held) dropHold(); // resume will start from the word, at the new speed
     updateUI();
@@ -1126,7 +1154,7 @@
   function setVoice(voiceName) {
     settings.voiceName = voiceName;
     state.readAhead = []; // prepared in the old voice
-    chrome.storage.sync.set({ voiceName }).catch(() => {});
+    save({ voiceName });
     updateVoiceUI();
     if (state.playing) speakCurrent();
     else if (state.paused?.held) dropHold();
@@ -1285,6 +1313,7 @@
     shrink: 'M22 3.41 16.71 8.7 20 12h-8V4l3.29 3.29L20.59 2 22 3.41zM3.41 22l5.29-5.29L12 20v-8H4l3.29 3.29L2 20.59 3.41 22z',
     lock: 'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6z',
     close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+    library: 'M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z',
     map: 'M3 9h14V7H3v2zm0 4h14v-2H3v2zm0 4h14v-2H3v2zm16 0h2v-2h-2v2zm0-10v2h2V7h-2zm0 6h2v-2h-2v2z',
     gear: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
   };
@@ -1603,7 +1632,10 @@
         h('span', { className: 'sep' }),
         voiceBtn,
         status),
-      h('div', { className: 'more' }, mapBtn, optsBtn, shrinkBtn, button('', 'Close', 'close', teardown)),
+      // The library page has its own way back to its shelf.
+      h('div', { className: 'more' }, mapBtn, optsBtn,
+        ...(location.protocol === 'chrome-extension:' ? [] : [button('', 'Library: read PDF and Word documents', 'library', () => send({ type: 'openLibrary' }))]),
+        shrinkBtn, button('', 'Close', 'close', teardown)),
     ];
     const bar = h('div', { className: 'bar glass' }, logo.btn, mores[0], ring, mores[1], backBtn, mores[2]);
     bar.addEventListener('pointerdown', onBarPointerDown);
@@ -1721,7 +1753,7 @@
 
   function setDock(dock) {
     settings.dock = dock;
-    chrome.storage.sync.set({ dock }).catch(() => {});
+    save({ dock });
     layoutUI();
     updateOptionsUI(); // the position picker
   }
@@ -1962,7 +1994,7 @@
 
   function setOption(key, value) {
     settings[key] = value;
-    chrome.storage.sync.set({ [key]: value }).catch(() => {});
+    save({ [key]: value });
     if (key === 'hlColor' || key === 'hlStyle' || key === 'wideSpacing' || key === 'lineFocus') applyDisplaySettings();
     if (key === 'hlColor') colorSelectionButton();
     if (key === 'clickToRead' && !value) hoverHL?.clear();
@@ -2239,6 +2271,7 @@
     ui.ring.style.setProperty('--p', total ? Math.min(state.idx, total) / total : 0);
     if (total && state.idx < total) setStatus(`${state.idx + 1} / ${total}`, false);
     updateMapCurrent();
+    reader.onProgress?.(Math.min(state.idx, total), total);
   }
 
   async function ensureReady() {
@@ -2268,6 +2301,8 @@
     state.gen++;
     clearTimers();
     state.playing = false;
+    state.paused = null;
+    state.resuming = null;
     state.sections = [];
     state.queue = [];
     state.idx = 0;
@@ -2624,6 +2659,7 @@
     hoverHL?.clear();
     clearTimeout(pointer.showTimer);
     pointer.pendingBlock = null;
+    if (pointer.paraBlock && !pointer.hideTimer) pointer.hideTimer = setTimeout(hideParagraphButton, HIDE_DELAY);
   }
 
   function onMouseDown(e) {
@@ -2652,8 +2688,41 @@
     if (state.playing) send({ type: 'stop' });
   });
 
+  // The library page (library/library.js) shows a document and drives the reader itself.
+  const reader = {
+    onProgress: null, // (sentence, total) as reading moves on
+    // Show the player at a sentence, without starting to read. `of`: how many sentences there
+    // were when that place was saved; if the document now splits differently (shown another
+    // way), the place is moved to the same distance through it.
+    async open(idx = 0, of = 0) {
+      await ensureReady();
+      loadSections();
+      if (!state.queue.length) return setStatus('No readable text found');
+      if (of && of !== state.queue.length) idx = Math.round((idx / of) * state.queue.length);
+      state.idx = Math.max(0, Math.min(idx, state.queue.length - 1));
+      if (state.idx) highlightSentence(state.queue[state.idx]);
+      updateUI();
+    },
+    async play(idx) {
+      if (!ui) await reader.open(idx);
+      if (!state.playing) play();
+    },
+    close: teardown,
+  };
+  if (location.protocol === 'chrome-extension:') window.WrenReader = reader;
+
+  // Messages between the extension's other parts also arrive on its own pages (the library), so
+  // only the ones meant for a reader are answered.
+  const COMMANDS = new Set(['toggle', 'readPage', 'readSelection', 'readSelectionOnly', 'ttsEvent', 'externalStop']);
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (orphaned || msg.target || !COMMANDS.has(msg.type)) return;
     sendResponse({ ok: true });
+    // Chrome's PDF viewer has no text on its page to read: the PDF is opened in the library.
+    if (document.contentType === 'application/pdf') {
+      if (msg.type === 'toggle' || msg.type === 'readPage') send({ type: 'readPdf' });
+      return;
+    }
     switch (msg.type) {
       case 'toggle':
         if (!ui || hasSelection()) startReading({ fromSelection: true });
