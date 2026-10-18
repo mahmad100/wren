@@ -159,11 +159,9 @@ My own Speechify replacement: a Chrome extension that reads pages, PDFs and Word
 
 **iPhone:** no app can draw over other apps on iOS. Options discussed: iOS Speak Screen (free, today); a Wren app with a Share → "Read with Wren" extension, background audio, a Live Activity in the Dynamic Island and a Shortcut for the Action Button or Back Tap (Expo, built in the cloud with EAS, so no Mac needed, but a $99/year Apple Developer account); later a Safari extension made from this one. Waiting on the user: Apple Developer account, and whether it's mainly for Safari or for anything.
 
-**Not committed:** the work of Sessions 6 and 7 (v0.8 library and v0.9 pages) is still only on this computer; the last commit is the v0.7+ faster start. Build-folder changes (docx-preview and JSZip added to `package.json`, `build.mjs`, `test/library.mjs`, `test/try.mjs`) live in `wren-build`, which isn't in git.
+**Committed and pushed** Sessions 6 and 7 together (v0.8 library and v0.9 pages) as d768bf2. Build-folder changes (docx-preview and JSZip added to `package.json`, `build.mjs`, `test/library.mjs`, `test/try.mjs`) live in `wren-build`, which isn't in git.
 
 ## Next session: start here
-
-**First, commit and push** Sessions 6 and 7 (no Claude attribution line), unless the user wants to try them first.
 
 0. **Reload Wren in `chrome://extensions`** (it's now 0.9.0), then try the library by hand: right-click the Wren icon → *Open the Wren library*, drop in a real PDF and a .docx, and listen with an AI voice. Check the highlight sits on the words in Pages view, and try the Pages / Text switch. Try a long PDF (100+ pages) for speed. Click the icon on a PDF open in a tab. Tell me where the text comes out wrong; `node test/try.mjs <file>` shows me the same thing.
 1. **Measure the faster start** (window side by side, tab visible): click with and without resting first, while reading and while stopped. Listen for a gap where a sentence is split. If a resting pointer still waits, the guess may be waiting behind a clip already being made.
