@@ -16,7 +16,7 @@ My own Speechify replacement: a Chrome extension that reads pages, PDFs and Word
 | v0.7+ | AI voice starts faster after a click (short first piece, clips prepared before the click), × to close panels | ✅ The user tried it in Chrome: "it works". ⚠️ Not measured with the prepare-ahead, see Session 5 |
 | v0.8 | Library: a page for reading PDF and Word documents, with your place remembered. The toolbar icon on a PDF tab opens it there | ⚠️ Unchecked: not yet used by the user, or heard with an AI voice. Only the automatic checks in a hidden Chrome pass (`node test/library.mjs`) |
 | v0.9 | Library shows documents as their real pages (PDF pages drawn, Word laid out in pages), highlight on the words; Pages / Text switch | ⚠️ Unchecked by the user. 32 automatic checks pass, and screenshots of a two-column PDF and a styled Word file look right |
-| v0.9+ | Reads pages whose text is in an iframe (e.g. a course in an LMS), and text that fades in as it's scrolled to | ✅ Iframe: the user tried it on a Tufts Absorb course, "it works". ⚠️ Fade-in fix (skipped list items) not yet tried by the user |
+| v0.9+ | Reads pages whose text is in an iframe (e.g. a course in an LMS), and text that fades in as it's scrolled to | ✅ Iframe: the user tried it on a Tufts Absorb course, "it works". Fade-in fix: the user tried it on the course, "it works now" |
 
 ## Session 1 (2026-10-05)
 
@@ -168,7 +168,7 @@ My own Speechify replacement: a Chrome extension that reads pages, PDFs and Word
 - **Fixed** in `background.js`: `sendToTab` now looks into every frame (`probeFrame`, run with `allFrames`) and `pickFrame` chooses where the reader goes: the frame with selected text, then one already showing the player with at least 200 characters to read, then the frame with the most text among those at least 40% of the tab's size (so hidden 0×0 SCORM frames are skipped). Right-click menu items go to the frame that was right-clicked (`info.frameId`).
 - New check in `wren-build/test/library.mjs`: a page with a menu bar, a hidden iframe and the lesson in an iframe; the reader lands in the lesson. 33 of 33 pass.
 - The user tried it on the course in Chrome: it works.
-- **Then it skipped numbered list items** ("1", "2" in Rise's numbered lists). Rise keeps each `li` at `opacity: 0` until it's scrolled into view, then fades it in, and `isVisible` in `content.js` counted see-through text as hidden (`checkOpacity`, there since v0.2 for no particular reason). Opacity is no longer checked; `display`, `visibility` and `aria-hidden` still are. New check: a see-through list item in the test lesson is read (34 of 34 pass). ⚠️ Not yet tried by the user on the course.
+- **Then it skipped numbered list items** ("1", "2" in Rise's numbered lists). Rise keeps each `li` at `opacity: 0` until it's scrolled into view, then fades it in, and `isVisible` in `content.js` counted see-through text as hidden (`checkOpacity`, there since v0.2 for no particular reason). Opacity is no longer checked; `display`, `visibility` and `aria-hidden` still are. New check: a see-through list item in the test lesson is read (34 of 34 pass). The user tried it on the course: it works.
 - Limit: a frame from a different site than the page isn't covered by `activeTab`, so a course served from another domain still can't be read. That would need host permissions.
 
 ## Next session: start here
