@@ -101,8 +101,10 @@
 
   // ---------- Finding the readable text ----------
 
+  // Opacity isn't checked: many pages (Articulate Rise courses, for one) keep text see-through
+  // until it's scrolled into view, then fade it in.
   function isVisible(el) {
-    if (el.checkVisibility) return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+    if (el.checkVisibility) return el.checkVisibility({ checkVisibilityCSS: true });
     return el.getClientRects().length > 0;
   }
 
