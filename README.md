@@ -114,7 +114,7 @@ The voice menu's first group, **Natural AI voices**, uses [Kokoro](https://huggi
 
 ## How it works
 
-- `background.js` speaks through Chrome's `chrome.tts` engine and passes its progress events back to the page.
+- `background.js` speaks through Chrome's `chrome.tts` engine and passes its progress events back to the page. It puts the reader into the frame worth reading: some pages, like a course in an LMS, show their text in an iframe, with little more than a menu bar around it. It picks the frame with selected text, then one already showing the player, then the large frame with the most text.
 - `content.js` finds the article text (skipping menus, sidebars, fact boxes, and reference lists), groups it into sections at each heading for the page map, splits it into sentences, highlights them with the CSS Custom Highlight API, and draws the player bar, the Options panel and the play buttons. The page itself isn't modified, except for one attribute on the article while wider spacing is on.
 - Reading can start or stop partway through a sentence (a clicked word, the end of a selection). That part is spoken as its own piece, and highlighted from the right place.
 - **Pause** holds the voice where it is: `chrome.tts.pause()` for built-in voices, and the paused audio clip for AI voices. Resume carries on mid-word. A voice that can't hold its place (it doesn't confirm within 0.3 s), or a clip that's gone (the AI voice unloads after 10 minutes), is stopped instead, and resume starts again from the word being read. Changing speed or voice, mid-sentence or while paused, also carries on from that word.

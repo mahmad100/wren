@@ -126,21 +126,61 @@ chrome.commands.onCommand.addListener((command, tab) => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_LIBRARY) return openLibrary();
   const type = { [MENU_SELECTION]: 'readSelection', [MENU_SELECTION_ONLY]: 'readSelectionOnly' }[info.menuItemId] || 'readPage';
-  sendToTab(tab, { type });
+  sendToTab(tab, { type }, info.frameId);
 });
 
-// Deliver a command to the tab's reader, injecting it first if it isn't there yet.
-async function sendToTab(tab, msg) {
-  if (!tab?.id) return;
+// What each frame of a tab holds, to choose the one to read (see pickFrame). Runs in the frame.
+function probeFrame() {
+  const sel = getSelection();
+  return {
+    reader: !!window.__voiceReaderLoaded,
+    player: !!document.getElementById('voice-reader-host'),
+    selection: !!(sel && sel.rangeCount && !sel.isCollapsed && sel.toString().trim()),
+    text: document.body?.innerText.trim().length || 0,
+    area: innerWidth * innerHeight,
+  };
+}
+
+// The frame to read in. Course players and some sites show their text in an iframe (a SCORM
+// course in an LMS), leaving only a menu bar in the page itself. In order: the frame with
+// selected text, one already showing the player with something to read, then the frame with
+// the most text that fills a good part of the tab.
+async function pickFrame(tabId) {
+  let results;
   try {
-    await chrome.tabs.sendMessage(tab.id, msg);
-    return;
+    results = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: probeFrame });
   } catch {
-    // No reader in this tab yet.
+    return 0; // the page can't be looked into (an extension page, chrome://): ask the top frame
+  }
+  const frames = results.filter((r) => r.result).map((r) => ({ frameId: r.frameId, ...r.result }));
+  const top = frames.find((f) => f.frameId === 0);
+  const big = frames.filter((f) => f.frameId === 0 || f.area >= (top?.area || 0) * 0.4);
+  const pick = frames.find((f) => f.selection)
+    || big.find((f) => f.player && f.text >= 200)
+    || big.reduce((best, f) => (f.text > best.text ? f : best), top || big[0]);
+  return pick ? { frameId: pick.frameId, reader: pick.reader } : 0;
+}
+
+// Deliver a command to the tab's reader, injecting it first if it isn't there yet.
+async function sendToTab(tab, msg, frameId) {
+  if (!tab?.id) return;
+  let reader = true; // unknown: try sending first
+  if (frameId == null) {
+    const pick = await pickFrame(tab.id);
+    if (pick) ({ frameId, reader } = pick);
+    else frameId = 0;
+  }
+  if (reader) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, msg, { frameId });
+      return;
+    } catch {
+      // No reader in this frame yet.
+    }
   }
   try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['wren-mark.js', 'math-speech.js', 'content.js'] });
-    await chrome.tabs.sendMessage(tab.id, msg);
+    await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [frameId] }, files: ['wren-mark.js', 'math-speech.js', 'content.js'] });
+    await chrome.tabs.sendMessage(tab.id, msg, { frameId });
   } catch (err) {
     // chrome:// pages, the Web Store and Chrome's PDF viewer can't be scripted.
     if (await readInLibrary(tab)) return;

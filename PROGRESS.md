@@ -2,7 +2,7 @@
 
 My own Speechify replacement: a Chrome extension that reads pages, PDFs and Word documents aloud with sentence and word highlighting.
 
-## Status (2026-10-18)
+## Status (2026-10-19)
 
 | Version | Feature | Status |
 | --- | --- | --- |
@@ -16,6 +16,7 @@ My own Speechify replacement: a Chrome extension that reads pages, PDFs and Word
 | v0.7+ | AI voice starts faster after a click (short first piece, clips prepared before the click), × to close panels | ✅ The user tried it in Chrome: "it works". ⚠️ Not measured with the prepare-ahead, see Session 5 |
 | v0.8 | Library: a page for reading PDF and Word documents, with your place remembered. The toolbar icon on a PDF tab opens it there | ⚠️ Unchecked: not yet used by the user, or heard with an AI voice. Only the automatic checks in a hidden Chrome pass (`node test/library.mjs`) |
 | v0.9 | Library shows documents as their real pages (PDF pages drawn, Word laid out in pages), highlight on the words; Pages / Text switch | ⚠️ Unchecked by the user. 32 automatic checks pass, and screenshots of a two-column PDF and a styled Word file look right |
+| v0.9+ | Reads pages whose text is in an iframe (e.g. a course in an LMS) | ✅ The user tried it on a Tufts Absorb course: "it works" |
 
 ## Session 1 (2026-10-05)
 
@@ -161,6 +162,14 @@ My own Speechify replacement: a Chrome extension that reads pages, PDFs and Word
 
 **Committed and pushed** Sessions 6 and 7 together (v0.8 library and v0.9 pages) as d768bf2. Build-folder changes (docx-preview and JSZip added to `package.json`, `build.mjs`, `test/library.mjs`, `test/try.mjs`) live in `wren-build`, which isn't in git.
 
+## Session 8 (2026-10-19): pages with their text in an iframe
+
+**Wren didn't read a course in Tufts Learning Center** (Absorb LMS, an Articulate Rise course). The reader only ever went into the tab's top frame, and there the text is just the course title and "Exit course" (118 characters). The lesson (~7,700 characters) is two iframes down, inside the SCORM wrapper, all on the same site.
+- **Fixed** in `background.js`: `sendToTab` now looks into every frame (`probeFrame`, run with `allFrames`) and `pickFrame` chooses where the reader goes: the frame with selected text, then one already showing the player with at least 200 characters to read, then the frame with the most text among those at least 40% of the tab's size (so hidden 0×0 SCORM frames are skipped). Right-click menu items go to the frame that was right-clicked (`info.frameId`).
+- New check in `wren-build/test/library.mjs`: a page with a menu bar, a hidden iframe and the lesson in an iframe; the reader lands in the lesson. 33 of 33 pass.
+- The user tried it on the course in Chrome: it works.
+- Limit: a frame from a different site than the page isn't covered by `activeTab`, so a course served from another domain still can't be read. That would need host permissions.
+
 ## Next session: start here
 
 0. **Reload Wren in `chrome://extensions`** (it's now 0.9.0), then try the library by hand: right-click the Wren icon → *Open the Wren library*, drop in a real PDF and a .docx, and listen with an AI voice. Check the highlight sits on the words in Pages view, and try the Pages / Text switch. Try a long PDF (100+ pages) for speed. Click the icon on a PDF open in a tab. Tell me where the text comes out wrong; `node test/try.mjs <file>` shows me the same thing.
@@ -171,8 +180,9 @@ My own Speechify replacement: a Chrome extension that reads pages, PDFs and Word
 5. My tests in earlier sessions switched on line focus, wider spacing and a green highlight in the user's settings. Switch them back in Options if not wanted.
 6. **Listen to math on a few more pages** and tune the wording: Wikipedia "Normal distribution", "Schrödinger equation", "Quadratic formula", "Absolute value".
 7. Library ideas: leave out the words inside figures, show scanned PDFs as pages even with no text, OCR for scans, zoom buttons for Pages view, EPUB and plain text.
-8. Other ideas: skip-content switches (citations, brackets, URLs), a size setting for the player, tables read row by row, Google Docs.
-9. **iPhone:** waiting on the user (Apple Developer account? mainly Safari, or anything?). See Session 7 for the options; the recommended one is an Expo app with a Share extension.
+8. Frames from another site (a course served from a different domain): would need optional host permissions, asked for when needed.
+9. Other ideas: skip-content switches (citations, brackets, URLs), a size setting for the player, tables read row by row, Google Docs.
+10. **iPhone:** waiting on the user (Apple Developer account? mainly Safari, or anything?). See Session 7 for the options; the recommended one is an Expo app with a Share extension.
 
 **Testing note:** my Chrome tool can't press browser-level shortcuts or the toolbar icon in the user's Chrome, and Alt+Shift+letter keys hit the page's own shortcuts. The user has to reload the extension and click the icon; after that I can drive the player bar. The scripted Chrome in `wren-build/test/` can click the icon, but has no graphics chip, so no AI voices.
 
