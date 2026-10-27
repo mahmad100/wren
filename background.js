@@ -1,0 +1,400 @@
+// Wren service worker: injects the reader into tabs and owns the chrome.tts engine.
+// Speech runs here (not in the page) so it needs no page click to start and isn't
+// affected by the site's own scripts or security policy.
+
+importScripts('wren-mark.js', 'library/store.js');
+
+const MENU_LIBRARY = 'vr-library';
+const MENU_PAGE = 'vr-read-page';
+const MENU_SELECTION = 'vr-read-selection';
+const MENU_SELECTION_ONLY = 'vr-read-selection-only';
+
+// Natural voices generated on this computer by the Kokoro model (see offscreen/offscreen.js).
+const AI_VOICES = [
+  ['af_heart', 'Heart (US, female)', 'en-US'],
+  ['af_bella', 'Bella (US, female)', 'en-US'],
+  ['af_nicole', 'Nicole (US, female, soft)', 'en-US'],
+  ['af_aoede', 'Aoede (US, female)', 'en-US'],
+  ['am_michael', 'Michael (US, male)', 'en-US'],
+  ['am_fenrir', 'Fenrir (US, male)', 'en-US'],
+  ['am_puck', 'Puck (US, male)', 'en-US'],
+  ['bf_emma', 'Emma (UK, female)', 'en-GB'],
+  ['bm_george', 'George (UK, male)', 'en-GB'],
+  ['bm_fable', 'Fable (UK, male)', 'en-GB'],
+].map(([id, name, lang]) => ({ voiceName: `AI: ${name}`, aiVoice: id, lang, engine: 'ai', remote: false, eventTypes: null }));
+
+let speakingTab = null;
+let aiTarget = null; // { tabId, frameId } that AI voice events go to
+let activeEngine = null; // 'ai' or 'tts': which one is speaking (or paused)
+let ttsPaused = false;   // chrome.tts is holding a paused sentence
+let creatingOffscreen = null;
+
+async function hasOffscreen() {
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+  return contexts.length > 0;
+}
+
+async function ensureOffscreen() {
+  if (await hasOffscreen()) return;
+  creatingOffscreen ??= chrome.offscreen.createDocument({
+    url: 'offscreen/offscreen.html',
+    reasons: ['AUDIO_PLAYBACK', 'WORKERS'],
+    justification: 'Generates and plays speech with the on-device AI voice.',
+  }).finally(() => { creatingOffscreen = null; });
+  await creatingOffscreen;
+}
+
+// The toolbar icon shows the logo and color chosen on the player bar, and sways while its tab
+// is reading.
+let look = { logo: 'soundtail', color: 'ember' };
+let iconAnim = null; // { tabId, timer }
+const iconCanvases = [[16, 0], [32, 1]].map(([size, pad]) => [size, pad, new OffscreenCanvas(size, size).getContext('2d')]);
+
+function iconImages(levels) {
+  const imageData = {};
+  for (const [size, pad, ctx] of iconCanvases) {
+    WREN_MARK.draw(ctx, size, { shape: look.logo, color: look.color, levels, pad });
+    imageData[size] = ctx.getImageData(0, 0, size, size);
+  }
+  return imageData;
+}
+
+function setToolbarIcon() {
+  chrome.action.setIcon({ imageData: iconImages() }).catch(() => {});
+}
+
+chrome.storage.sync.get(look).then((stored) => {
+  look = stored;
+  setToolbarIcon();
+}).catch(() => {});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !(changes.logo || changes.color)) return;
+  look = { logo: changes.logo?.newValue ?? look.logo, color: changes.color?.newValue ?? look.color };
+  setToolbarIcon();
+});
+
+function startIconAnim(tabId) {
+  if (iconAnim?.tabId === tabId) return;
+  stopIconAnim();
+  const t0 = performance.now();
+  const timer = setInterval(() => {
+    const imageData = iconImages(WREN_MARK.levels((performance.now() - t0) / 1000));
+    chrome.action.setIcon({ tabId, imageData }).catch(() => stopIconAnim());
+  }, 100);
+  iconAnim = { tabId, timer };
+}
+
+function stopIconAnim(tabId = iconAnim?.tabId) {
+  if (!iconAnim || iconAnim.tabId !== tabId) return;
+  clearInterval(iconAnim.timer);
+  iconAnim = null;
+  chrome.action.setIcon({ tabId, imageData: iconImages() }).catch(() => {});
+}
+
+// A paused chrome.tts holds back anything new until it's resumed, so clear the pause first.
+function clearTtsPause() {
+  if (!ttsPaused) return;
+  ttsPaused = false;
+  chrome.tts.stop();
+  chrome.tts.resume();
+}
+
+async function stopAll() {
+  chrome.tts.stop();
+  clearTtsPause();
+  if (await hasOffscreen()) chrome.runtime.sendMessage({ target: 'offscreen', type: 'stop' }).catch(() => {});
+}
+
+// Wake at browser start, so the toolbar icon is set from the chosen logo (above).
+chrome.runtime.onStartup.addListener(() => {});
+
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.contextMenus.removeAll();
+  chrome.contextMenus.create({ id: MENU_LIBRARY, title: 'Open the Wren library (PDF and Word)', contexts: ['action'] });
+  chrome.contextMenus.create({ id: MENU_PAGE, title: 'Read this page aloud', contexts: ['page'] });
+  chrome.contextMenus.create({ id: MENU_SELECTION_ONLY, title: 'Read selected text', contexts: ['selection'] });
+  chrome.contextMenus.create({ id: MENU_SELECTION, title: 'Read aloud from here', contexts: ['selection'] });
+});
+
+chrome.action.onClicked.addListener((tab) => sendToTab(tab, { type: 'toggle' }));
+
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command === 'toggle-reading') sendToTab(tab, { type: 'toggle' });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === MENU_LIBRARY) return openLibrary();
+  const type = { [MENU_SELECTION]: 'readSelection', [MENU_SELECTION_ONLY]: 'readSelectionOnly' }[info.menuItemId] || 'readPage';
+  sendToTab(tab, { type }, info.frameId);
+});
+
+// What each frame of a tab holds, to choose the one to read (see pickFrame). Runs in the frame.
+function probeFrame() {
+  const sel = getSelection();
+  return {
+    reader: !!window.__voiceReaderLoaded,
+    player: !!document.getElementById('voice-reader-host'),
+    selection: !!(sel && sel.rangeCount && !sel.isCollapsed && sel.toString().trim()),
+    text: document.body?.innerText.trim().length || 0,
+    area: innerWidth * innerHeight,
+  };
+}
+
+// The frame to read in. Course players and some sites show their text in an iframe (a SCORM
+// course in an LMS), leaving only a menu bar in the page itself. In order: the frame with
+// selected text, one already showing the player with something to read, then the frame with
+// the most text that fills a good part of the tab.
+async function pickFrame(tabId) {
+  let results;
+  try {
+    results = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: probeFrame });
+  } catch {
+    return 0; // the page can't be looked into (an extension page, chrome://): ask the top frame
+  }
+  const frames = results.filter((r) => r.result).map((r) => ({ frameId: r.frameId, ...r.result }));
+  const top = frames.find((f) => f.frameId === 0);
+  const big = frames.filter((f) => f.frameId === 0 || f.area >= (top?.area || 0) * 0.4);
+  const pick = frames.find((f) => f.selection)
+    || big.find((f) => f.player && f.text >= 200)
+    || big.reduce((best, f) => (f.text > best.text ? f : best), top || big[0]);
+  return pick ? { frameId: pick.frameId, reader: pick.reader } : 0;
+}
+
+// Deliver a command to the tab's reader, injecting it first if it isn't there yet.
+async function sendToTab(tab, msg, frameId) {
+  if (!tab?.id) return;
+  let reader = true; // unknown: try sending first
+  if (frameId == null) {
+    const pick = await pickFrame(tab.id);
+    if (pick) ({ frameId, reader } = pick);
+    else frameId = 0;
+  }
+  if (reader) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, msg, { frameId });
+      return;
+    } catch {
+      // No reader in this frame yet.
+    }
+  }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [frameId] }, files: ['wren-mark.js', 'math-speech.js', 'content.js'] });
+    await chrome.tabs.sendMessage(tab.id, msg, { frameId });
+  } catch (err) {
+    // chrome:// pages, the Web Store and Chrome's PDF viewer can't be scripted.
+    if (await readInLibrary(tab)) return;
+    console.warn('[Wren] cannot read this tab:', err?.message);
+    chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#d93025' });
+    chrome.action.setBadgeText({ tabId: tab.id, text: '!' });
+    chrome.action.setTitle({ tabId: tab.id, title: "Wren can't read this page" });
+    setTimeout(() => chrome.action.setBadgeText({ tabId: tab.id, text: '' }).catch(() => {}), 4000);
+  }
+}
+
+// ---------- The library: a page of this extension for reading PDF and Word documents ----------
+
+const LIBRARY_URL = chrome.runtime.getURL('library/library.html');
+
+// Open the library on its shelf (going to its tab if it's already open), or on one document.
+async function openLibrary(hash = '', beside = null) {
+  if (!hash) {
+    const [open] = (await chrome.runtime.getContexts({ contextTypes: ['TAB'] })).filter((c) => c.documentUrl?.startsWith(LIBRARY_URL));
+    if (open) {
+      await chrome.tabs.update(open.tabId, { active: true });
+      chrome.windows.update(open.windowId, { focused: true }).catch(() => {});
+      return;
+    }
+  }
+  chrome.tabs.create({ url: LIBRARY_URL + hash, ...(beside ? { index: beside.index + 1, openerTabId: beside.id } : {}) });
+}
+
+// The toolbar icon was clicked on a tab the reader can't be put into. A PDF is added to the
+// library and opened there, and a new tab opens the library. True if either was done.
+async function readInLibrary(tab, isPdf = false) {
+  const url = tab.url || '';
+  if (/^(chrome|edge):\/\/(newtab|new-tab-page)/.test(url)) {
+    openLibrary();
+    return true;
+  }
+  if (!/^(https?|file):/.test(url)) return false;
+  const known = (await WrenStore.list()).find((d) => d.source === url);
+  if (known) {
+    openLibrary(`#doc=${known.id}`, tab);
+    return true;
+  }
+  const looksLikePdf = isPdf || /\.pdf$/i.test(new URL(url).pathname);
+  let blob;
+  try {
+    const res = await fetch(url);
+    if (!(looksLikePdf || /pdf/i.test(res.headers.get('content-type') || ''))) return false;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    blob = await res.blob();
+  } catch {
+    // The site doesn't let the file be fetched from here (or it's a file on this computer and
+    // Wren isn't allowed file access). The library says how to add it by hand.
+    if (!looksLikePdf) return false;
+    openLibrary('#blocked', tab);
+    return true;
+  }
+  const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || '') || 'Document.pdf';
+  const doc = await WrenStore.add({ name: /\.pdf$/i.test(name) ? name : `${name}.pdf`, kind: 'pdf', blob, source: url });
+  openLibrary(`#doc=${doc.id}`, tab);
+  return true;
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.target === 'offscreen') return; // meant for the AI voice page, not us
+  switch (msg.type) {
+    case 'readPdf':
+      // From the reader on a tab showing a PDF (see content.js).
+      if (sender.tab) readInLibrary(sender.tab, true);
+      return;
+
+    case 'openLibrary':
+      openLibrary('', sender.tab);
+      return;
+
+    case 'getVoices':
+      chrome.tts.getVoices((voices) => {
+        sendResponse([...AI_VOICES, ...voices.map((v) => ({
+          voiceName: v.voiceName,
+          lang: v.lang || '',
+          engine: 'chrome',
+          remote: !!v.remote,
+          eventTypes: v.eventTypes || null,
+        }))]);
+      });
+      return true;
+
+    case 'speak': {
+      const tabId = sender.tab?.id;
+      const frameId = sender.frameId;
+      // Reading started in another tab: tell the old tab it has been paused.
+      if (speakingTab != null && speakingTab !== tabId) {
+        chrome.tabs.sendMessage(speakingTab, { type: 'externalStop' }).catch(() => {});
+      }
+      speakingTab = tabId;
+      const ai =AI_VOICES.find((v) => v.voiceName === msg.voiceName);
+      if (ai) {
+        chrome.tts.stop();
+        clearTtsPause();
+        activeEngine = 'ai';
+        aiTarget = { tabId, frameId };
+        ensureOffscreen().then(() => chrome.runtime.sendMessage({
+          target: 'offscreen', type: 'speak', id: msg.id, text: msg.text, voice: ai.aiVoice,
+          rate: msg.rate, upcoming: msg.upcoming || [],
+        })).catch((err) => {
+          chrome.tabs.sendMessage(tabId, { type: 'ttsEvent', id: msg.id, ev: { type: 'error', errorMessage: err.message } }, { frameId })
+            .catch(() => {});
+        });
+        sendResponse({ ok: true });
+        return;
+      }
+      hasOffscreen().then((has) => {
+        if (has) chrome.runtime.sendMessage({ target: 'offscreen', type: 'stop' }).catch(() => {});
+      });
+      clearTtsPause();
+      activeEngine = 'tts';
+      const options = {
+        rate: msg.rate,
+        enqueue: false,
+        onEvent: (ev) => {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'ttsEvent',
+            id: msg.id,
+            ev: { type: ev.type, charIndex: ev.charIndex, length: ev.length, errorMessage: ev.errorMessage },
+          }, { frameId }).catch(() => {});
+        },
+      };
+      if (msg.voiceName) options.voiceName = msg.voiceName;
+      if (msg.lang) options.lang = msg.lang;
+      chrome.tts.speak(msg.text, options);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    case 'prepare': {
+      // Make an AI voice clip for where reading is likely to start next (see prepareFrom in content.js).
+      const ai = AI_VOICES.find((v) => v.voiceName === msg.voiceName);
+      if (ai) {
+        ensureOffscreen().then(() => chrome.runtime.sendMessage({
+          target: 'offscreen', type: 'prepare', text: msg.text, voice: ai.aiVoice,
+        })).catch(() => {});
+      }
+      return;
+    }
+
+    case 'stop':
+      // Only the tab that is speaking may stop speech, so a paused tab can't cut off another.
+      // (null means this worker restarted and lost track, so allow it.)
+      if (speakingTab == null || sender.tab?.id === speakingTab) {
+        stopAll();
+        speakingTab = null;
+      }
+      sendResponse({ ok: true });
+      return;
+
+    case 'pause':
+    case 'resume': {
+      // Hold the sentence where it is, or carry on from there. When that can't be done, the tab
+      // is told, and it stops and later resumes from the word instead.
+      const failed = (to) => chrome.tabs.sendMessage(to.tabId, {
+        type: 'ttsEvent', id: msg.id, ev: { type: msg.type === 'pause' ? 'pauseFailed' : 'resumeFailed' },
+      }, { frameId: to.frameId }).catch(() => {});
+      const tab = { tabId: sender.tab?.id, frameId: sender.frameId };
+      if (tab.tabId !== speakingTab) {
+        failed(tab);
+      } else if (activeEngine === 'ai') {
+        hasOffscreen().then((has) => {
+          if (has) chrome.runtime.sendMessage({ target: 'offscreen', type: msg.type, id: msg.id }).catch(() => failed(tab));
+          else failed(tab);
+        });
+      } else if (msg.type === 'pause') {
+        ttsPaused = true;
+        chrome.tts.pause();
+      } else {
+        ttsPaused = false;
+        chrome.tts.resume();
+      }
+      sendResponse({ ok: true });
+      return;
+    }
+
+    case 'iconState':
+      if (msg.playing) startIconAnim(sender.tab?.id);
+      else stopIconAnim(sender.tab?.id);
+      return;
+
+    case 'aiEvent':
+      // From the AI voice page: pass playback progress on to the tab that's reading.
+      if (aiTarget) {
+        chrome.tabs.sendMessage(aiTarget.tabId, { type: 'ttsEvent', id: msg.id, ev: msg.ev }, { frameId: aiTarget.frameId })
+          .catch(() => {});
+      }
+      return;
+
+    case 'aiIdle':
+      chrome.offscreen.closeDocument().catch(() => {});
+      return;
+  }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (iconAnim?.tabId === tabId) {
+    clearInterval(iconAnim.timer);
+    iconAnim = null;
+  }
+  if (tabId === speakingTab) {
+    stopAll();
+    speakingTab = null;
+  }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') stopIconAnim(tabId);
+  if (tabId === speakingTab && changeInfo.status === 'loading') {
+    stopAll();
+    speakingTab = null;
+  }
+});

@@ -1,0 +1,167 @@
+# Wren
+
+A Chrome extension that reads web pages, PDFs and Word documents aloud and highlights each sentence and word as it is spoken. It can use built-in voices or natural AI voices that run on your own computer.
+
+## Install
+
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode** (top right).
+3. Click **Load unpacked** and choose this `wren` folder.
+4. Pin the extension (puzzle-piece icon → pin) so the Wren icon is always visible.
+
+After changing any file, click the reload arrow on the extension's card in `chrome://extensions`, then refresh the page you're reading.
+
+## Use
+
+| Action | How |
+| --- | --- |
+| Read the page | Click the toolbar icon, or press **Alt+Shift+R** |
+| Read a PDF or Word file | Open the library (see *The library*) and drop the file in |
+| Read a PDF open in a tab | Click the toolbar icon on it. It opens in the library |
+| Pause / resume | Same again, or the big button on the player bar. Resume carries on mid-word, from exactly where it paused |
+| Read from a word | With the player open, **click** any text (see *Starting where you point*) |
+| Read just some text | Select it, then press the play button that appears next to it, or right-click → *Read selected text* |
+| Read on from a selection | Right-click selected text → *Read aloud from here* |
+| Read from a paragraph | **Alt+click** it, or turn on paragraph play buttons in Options |
+| Previous / next sentence | **Alt+Shift+←** / **Alt+Shift+→** |
+| Slower / faster | **Alt+Shift+↓** / **Alt+Shift+↑**, or **−** / **+** on the bar |
+| Choose a voice | The voice button on the bar (it shows the voice's name) |
+| Page map / Options | The list and ⚙ buttons on the bar |
+| Open the library | The pages button on the bar, or right-click the toolbar icon → *Open the Wren library* |
+| Move the player | Drag it by the logo or any empty part of the bar |
+| Change the logo, color, glass or position | Click the logo on the bar |
+| Shrink when not in use | The inward-arrows button next to **×** turns it on or off (highlighted when on) |
+| Close the player | **×** on the bar |
+
+Your speed, voice, Options choices and where you put the player are remembered. The page map, voice and Options panels start closed. The × in a panel's corner closes it, and so does Esc. To change the start/pause shortcut, go to `chrome://extensions/shortcuts`.
+
+## The player
+
+A frosted-glass bar that follows your system's light or dark mode. The ring around the play button fills as you get through the article, and the logo moves gently while it reads.
+
+- **Appearance:** click the round logo to choose it (Soundtail, Songbird or Wave) and a color (Ember, Rose, Dusk, Moss or Ink). The color runs through the whole player, the play buttons on the page, and the toolbar icon. The same panel has:
+  - **Position:** a small picture of the screen. Tap an edge to send the player there. **Shrink when not in use** slims the player down to its logo and play button; point at it and it opens into the full bar, then shrinks again half a second after you move away (it stays open while a panel is open). Messages show in a bubble beside it while it's small. **Lock position** stops it being dragged (like an iPhone's rotation lock); a lock badge shows on the logo, and a drag makes the bar shake.
+  - **Glass:** a slider from clear to frosted, pill or rounded corners, and a tint in your color. These apply to the bar, the panels and the message bubbles alike; panels stay a little more solid than the bar so their text stays readable.
+
+- **Docking:** push either end of the bar up to the left or right side and it turns into a vertical strip there, wherever you're holding it. Pull it a little way back out and it turns horizontal again. Near the top or bottom edge it docks there horizontally. Anywhere else it floats where you drop it.
+- **Panels:** Appearance, the page map, voices and Options open on the side facing the page. Only one is open at a time. Scrolling a panel never scrolls the page behind it.
+- **Messages:** on a vertical bar there's no room for "Finished" or "Loading AI voice", so they show in a bubble beside it for a few seconds.
+
+## Starting where you point
+
+Modeled on Speechify and NaturalReader. Each one can be switched on or off in **Options** (⚙ on the bar).
+
+- **Click to read** (on by default): with the player open, click any text and reading starts from that word. A dotted underline shows where a click would start. Links, buttons and text boxes keep working as usual. A double-click still just selects a word. Text outside the article (a caption, a sidebar) works too: it's added to the page map as "Clicked text" instead of replacing the map.
+- **Play button on selected text** (on by default): select at least a few characters and, once you let go of the mouse, a play button appears next to the selection in your highlight color. It reads just the selection, then stops at "Finished selection". Selecting a whole paragraph (a triple-click) reads all of it, even when it ends on a citation like "[1]". Pressing play again carries on from just after it.
+- **Play buttons beside paragraphs** (off by default): rest the pointer on a paragraph and a play button in your Wren color appears in its margin. It doesn't appear for the paragraph already being read.
+
+Buttons that appear on hover follow the Nielsen Norman Group's timing guidance, so they don't flicker as the pointer passes over the page: they show after the pointer has rested for 0.4 s, and go 0.5 s after it leaves.
+
+## The library
+
+A page inside Wren for reading PDF and Word (.docx) documents. Open it from the pages button on the player bar, by right-clicking the toolbar icon → *Open the Wren library*, or by clicking the toolbar icon on a new tab.
+
+- **Add documents:** drop files anywhere on the page, or press **Add documents**. Several can be added at once. One file added on its own opens straight away.
+- **A PDF open in a Chrome tab:** click the toolbar icon on it. Wren adds it to the library and opens it there. If the site won't let Wren fetch the file, the library says so: download the PDF and drop it in.
+- **Pages or Text** (the switch at the top, remembered): **Pages**, the default, shows the document as it looks: a PDF's real pages, or a Word file laid out in pages with its own fonts, colors, lists and tables. The highlight lands on the words on the page. **Text** shows it as plain text in one column, which *Wider text spacing* in Options can space out (it doesn't apply to PDF pages, as the words are drawn there). Both read the same sentences, and switching keeps your place.
+- **Reading:** the player, voices, page map, click to read and Options all work as on a web page. "References" onwards starts unticked. A Word file's page header is shown but not read.
+- **The original file is kept:** the library stores each file as it was added, and shows its pages from it.
+- **Your place is remembered:** each card on the shelf shows how far you've read, and a document opens at the sentence where you stopped. **Listen** at the top brings the player back if you've closed it.
+- **Private:** documents are kept in Chrome on this computer and never sent anywhere. The × on a card removes one.
+
+How a PDF becomes text: a PDF only records where each bit of text sits on the page, so Wren puts lines, paragraphs and headings back together. Page numbers and repeated headers and footers are dropped, words split at a line end with a hyphen are joined, and two-column papers are read in order. In the Pages view, each page is drawn by PDF.js and the same text is laid over it, invisible, piece by piece where it's drawn, so it can be highlighted, clicked and selected.
+
+## Options for easier reading
+
+Choices aimed at dyslexic readers, all in **Options**:
+
+- **Follow along:** the page scrolls with the reading. If you scroll away by hand, it stops following and a **Back to reading** button appears. It also picks up again by itself once the sentence being read is back on screen.
+- **Line focus:** dims the page except the sentence being read (like Microsoft Immersive Reader). It steps aside while you've scrolled away.
+- **Wider text spacing:** more space between letters, words and lines in the article, using the WCAG text-spacing values. Extra letter spacing is the change with the best evidence for dyslexic readers ([Zorzi et al., PNAS 2012](https://pubmed.ncbi.nlm.nih.gov/22665803/)). Special "dyslexia fonts" like OpenDyslexic showed no benefit in studies, so there isn't one.
+- **Highlight:** yellow, green, blue or pink, for the sentence and word, the sentence only, or the word only.
+
+## Page map
+
+The page map lists the article's sections, one per heading, nested by level, with the number of sentences in each. The section being read is marked in orange.
+
+- **Tick or untick** a section to include or skip it. Unticking the section being read moves on to the next ticked one.
+- **Click a title** to jump there and start reading. This also ticks it if it was unticked.
+- Sections from "References", "See also", "External links" and similar onwards start unticked, so by default reading stops where the article ends.
+- Alt+clicking text in an unticked section ticks it and reads from there.
+
+## Math and Greek letters
+
+Equations are read aloud instead of skipped, for example *E = mc²* becomes "E equals m c squared", and *γ = 1/√(1 − v²/c²)* becomes "gamma equals 1 over the square root of 1 minus v squared over c squared". While an equation is being read, a yellow box is drawn over it, since many sites show equations as images that the normal highlight can't color.
+
+- Works with Wikipedia, MathJax, KaTeX, and plain MathML. Equations are read from the machine-readable copy these sites keep behind each equation. If there's only TeX source, a simpler reading of it is used.
+- Covers powers ("squared", "to the power of"), subscripts ("v sub 0"), fractions, roots, sums and integrals with limits, limits, brackets ("the quantity a plus b, squared"), absolute values and norms ("the absolute value of x"), accents ("x hat", "vector F") and common operators. A single bar is "given", as in P(A|B), or "such that" inside set brackets.
+- Greek letters are named, in equations and in ordinary text ("the α-helix" → "the alpha-helix"). Greek words are left alone, and "μm" is read as "micro m".
+- Some names are respelled so the voices say them right: Kokoro reads "xi" as "Roman eleven" and "mu" as "moo", so they're sent as "zye" and "mew".
+
+## Natural AI voices
+
+The voice menu's first group, **Natural AI voices**, uses [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), an open-source speech model that runs on your own computer. It's free, private (text never leaves your machine), and works offline after setup.
+
+- **First use:** downloads the model once (~330 MB). The player bar shows "Loading AI voice …%".
+- **After that:** it loads from Chrome's cache, and speech starts a few seconds after you press play.
+- **Read-ahead:** the next few sentences are prepared while the current one plays, so there are no pauses between sentences.
+- **Starting somewhere new:** each clip takes about a second to make, however short. So where you're likely to start is prepared before you click: the word under a resting pointer, a paragraph whose play button has appeared, or the spot you press the mouse on. And a sentence that wasn't prepared ahead has its first few words, up to a comma or similar, spoken as their own short clip, with the rest made while they play.
+- **Requirements:** a graphics chip with WebGPU (most laptops from the last few years). Without it, the reader switches to a built-in voice and says "AI voices unsupported here".
+- **Language:** English only (US and UK accents).
+- **Memory:** about 300 MB while in use. It's freed after 10 minutes without AI-voice reading.
+
+## How it works
+
+- `background.js` speaks through Chrome's `chrome.tts` engine and passes its progress events back to the page. It puts the reader into the frame worth reading: some pages, like a course in an LMS, show their text in an iframe, with little more than a menu bar around it. It picks the frame with selected text, then one already showing the player, then the large frame with the most text.
+- `content.js` finds the article text (skipping menus, sidebars, fact boxes, and reference lists), groups it into sections at each heading for the page map, splits it into sentences, highlights them with the CSS Custom Highlight API, and draws the player bar, the Options panel and the play buttons. The page itself isn't modified, except for one attribute on the article while wider spacing is on.
+- Reading can start or stop partway through a sentence (a clicked word, the end of a selection). That part is spoken as its own piece, and highlighted from the right place.
+- **Pause** holds the voice where it is: `chrome.tts.pause()` for built-in voices, and the paused audio clip for AI voices. Resume carries on mid-word. A voice that can't hold its place (it doesn't confirm within 0.3 s), or a clip that's gone (the AI voice unloads after 10 minutes), is stopped instead, and resume starts again from the word being read. Changing speed or voice, mid-sentence or while paused, also carries on from that word.
+- Voices that report word positions (for example the Windows "Microsoft …" voices) get exact word highlighting. For voices that don't (for example "Google US English"), the highlight follows an estimate based on that voice's measured speaking speed. For AI voices, the estimate is timed against the exact length of each audio clip.
+- `math-speech.js` turns equations (MathML) and math symbols into spoken English. It is injected just before `content.js`, which keeps two versions of the text: what's spoken, and where each part sits on the page, so an equation spoken as several words is highlighted as one unit.
+- `wren-mark.js` draws the three logos and holds the five color palettes. The logo moves slowly while reading, on the player bar (in a circle) and in the toolbar icon (a rounded square). `background.js` sets the toolbar icon to the chosen logo. The PNG icons in `icons/` are Soundtail in Ember; after changing the drawing, run `node icons/build.mjs` to remake them with Chrome.
+- `offscreen/` holds the AI voice engine: a hidden extension page (`offscreen.js`) that runs Kokoro on the GPU and plays the audio. It makes one clip at a time: what the reader is waiting to hear goes first, then a guess at where you'll start next (only the latest guess is kept), then read-ahead. `kokoro.bundle.js` and `ort/` are generated files; don't edit them by hand.
+- `library/` is the library page. `store.js` keeps documents in IndexedDB (the file, its text, and your place). `convert.js` turns a file into headings and paragraphs: PDFs with PDF.js, rebuilding lines and paragraphs from the position and size of each piece of text, and Word files with Mammoth. Only plain text markup is kept. `pages.js` shows the real pages: for a PDF it draws the pages on or near the screen with PDF.js and lays the text from `convert.js` over them (each run of text stretched to its width on the page, sized with a `--k` zoom that fits the window); for Word it uses docx-preview, and marks paragraphs in heading styles with `role="heading"` for the page map. The page then loads `content.js` itself, so documents are read by the same reader as web pages. `vendor/` holds PDF.js, Mammoth, JSZip and docx-preview, copied in by the build; don't edit them by hand.
+
+### Rebuilding the bundled code
+
+The AI voice bundle is built in `C:\Users\mahmad10\wren-build`. That folder is kept outside OneDrive so OneDrive doesn't sync `node_modules`. To update Kokoro:
+
+```
+cd C:\Users\mahmad10\wren-build
+npm update kokoro-js
+node build.mjs
+```
+
+The same build copies PDF.js, Mammoth, JSZip and docx-preview into `library/vendor/` (run `npm update pdfjs-dist mammoth jszip docx-preview` first to update them). After a rebuild, update the versions in `THIRD_PARTY_NOTICES.md`.
+
+### Testing
+
+`node test/library.mjs`, run in the same folder, loads Wren into a hidden Chrome and tries the library: adding a PDF and a Word file, showing them as pages and as text (the PDF's text and highlight sitting on its drawn words), reading with a built-in voice, pause and resume, remembering the place, and the toolbar icon on a web page, a PDF tab and the library tab. `node test/try.mjs <file>` prints the headings and paragraphs Wren makes of a PDF or Word file, for tuning `convert.js`.
+
+## Known limits (v0.9)
+
+- **Can't run on:** `chrome://` pages or the Chrome Web Store. Google Docs draws its text in a way the extension can't read yet.
+- **PDFs:** words inside figures and tables are read as they come, and a figure in the middle of a paragraph splits it. On the pages, the highlight follows each run of text stretched to its width, so on some fonts it can sit a little off a word's edges. Pages turned sideways aren't laid out right. Equations come out as loose symbols. A real hyphen at a line end is lost from the reading ("sequence-aligned" is read "sequencealigned"). Scanned PDFs (pictures of pages) have no text to read. A PDF on this computer opened in a tab (`file://`) needs *Allow access to file URLs* switched on for Wren in `chrome://extensions`; or just drop the file into the library.
+- **Word pages:** laid out by docx-preview, which is close to Word but not exact: page breaks fall where Word last saved them, and fonts that aren't on this computer are swapped for similar ones. Table cells are read one by one.
+- **Word:** .docx only (save old .doc files as .docx). Equations written with Word's equation editor are left out.
+- **Speed limits:** Google voices top out around 2× speed. Windows voices go faster.
+- **Math:** matrices and multi-line derivations are read row by row, and very long equations can be hard to follow by ear. Equation boxes don't follow equations inside separately scrolling areas.
+- **AI voice after a jump:** if a clip is already being made, it finishes first (up to about 1–2 s). A click with no pause on the word first, on a sentence with no comma near its start, waits about 1 s.
+- **Keyboard shortcuts:** only Alt+Shift+R and Alt+Shift+arrows. Alt+Shift+letter keys belong to many sites (on Wikipedia, Alt+Shift+O opens "Log in").
+
+## Ideas for next versions
+
+- Reading tables row by row, and image descriptions
+- Reading scanned PDFs (OCR)
+- Other files in the library: EPUB, plain text, web pages saved for later
+- Google Docs support
+- Skip-content switches (citations, brackets, URLs), like Speechify's
+- A size setting for the player (small, medium, large)
+
+## License
+
+Copyright (C) 2026 Mohammad Ahmadi.
+
+Wren is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but without any warranty. See [LICENSE](LICENSE) for the full text.
+
+The AI voice engine includes open-source code from other projects (Kokoro, Transformers.js, phonemizer, eSpeak NG, ONNX Runtime), and the library includes PDF.js, Mammoth, JSZip and docx-preview. Their licenses and credits are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). GPL-3.0 was chosen because eSpeak NG, which turns text into speech sounds for the AI voices, is GPL-3.0.

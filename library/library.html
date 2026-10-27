@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wren Library</title>
+  <link rel="icon" href="../icons/icon32.png">
+  <link rel="stylesheet" href="library.css">
+</head>
+<body>
+  <nav class="top">
+    <a class="brand" href="#" title="All documents"><canvas id="mark" width="64" height="64"></canvas><span>Library</span></a>
+    <span class="doc-title" id="doc-title"></span>
+    <div class="views" id="views" role="group" aria-label="Show as" hidden>
+      <button type="button" data-view="pages" title="As the file looks">Pages</button>
+      <button type="button" data-view="text" title="Plain text, which Options can space out">Text</button>
+    </div>
+    <button type="button" class="primary" id="listen" hidden>Listen</button>
+    <button type="button" class="primary" id="add">Add documents</button>
+    <input type="file" id="picker" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden>
+  </nav>
+
+  <div class="notice" id="notice" role="status" hidden></div>
+
+  <section class="shelf" id="shelf" hidden>
+    <div class="empty" id="empty" hidden>
+      <h1>Add something to read</h1>
+      <p>Drop PDF or Word (.docx) files anywhere on this page, or press <b>Add documents</b>.</p>
+      <p class="small">Your documents stay on this computer. Wren remembers where you stopped in each one.</p>
+    </div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <main id="reading" hidden>
+    <article id="doc" data-wren-document></article>
+  </main>
+
+  <div class="drop" id="drop" hidden><div>Drop to add to your library</div></div>
+
+  <script src="../wren-mark.js"></script>
+  <script src="../math-speech.js"></script>
+  <script src="../content.js"></script>
+  <script src="vendor/mammoth.browser.min.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="vendor/docx-preview.min.js"></script>
+  <script src="store.js"></script>
+  <script type="module" src="library.js"></script>
+</body>
+</html>

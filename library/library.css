@@ -1,0 +1,94 @@
+/* The Wren library: a shelf of added documents, and a plain page for reading one.
+   Follows the system's light or dark mode; library.js sets the accent to the chosen Wren color. */
+:root {
+  --bg: #f5f5f7; --card: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0, 0, 0, .1); --hover: rgba(0, 0, 0, .05);
+  --g1: #ffb547; --g2: #ff5e3a; --accent: #ff5e3a; --accent-text: #e5482a;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161617; --card: #232325; --fg: #f5f5f7; --muted: #a1a1a6; --line: rgba(255, 255, 255, .12); --hover: rgba(255, 255, 255, .07); }
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 72px; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+[hidden] { display: none !important; }
+
+.top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 14px; height: 56px; padding: 0 20px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; color: inherit; text-decoration: none; flex: none; }
+.brand canvas { width: 30px; height: 30px; border-radius: 50%; }
+.doc-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; border-radius: 999px; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { flex: none; padding: 8px 16px; font-weight: 600; color: #fff; background: linear-gradient(135deg, var(--g1), var(--g2)); }
+button.primary:hover { filter: brightness(1.06); }
+
+.notice { max-width: 760px; margin: 16px auto 0; padding: 12px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.notice.bad { border-color: color-mix(in srgb, #d93025 60%, transparent); }
+
+.shelf { max-width: 1040px; margin: 0 auto; padding: 28px 20px 140px; }
+.empty { margin: 8vh auto 0; max-width: 520px; padding: 44px 28px; text-align: center; border: 2px dashed var(--line); border-radius: 20px; }
+.empty h1 { margin: 0 0 8px; font-size: 24px; }
+.empty p { margin: 6px 0; color: var(--muted); }
+.small { font-size: 13px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.card { position: relative; display: flex; flex-direction: column; gap: 8px; min-height: 168px; padding: 16px; border-radius: 16px;
+  background: var(--card); border: 1px solid var(--line); color: inherit; text-decoration: none; transition: transform .15s, box-shadow .15s; }
+a.card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
+.kind { align-self: flex-start; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  color: var(--accent-text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.card h2 { margin: 0; font-size: 16px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.card .meta { margin-top: auto; font-size: 12px; color: var(--muted); }
+.card.failed .meta { color: #d93025; }
+.bar { height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; width: calc(var(--p, 0) * 100%); background: linear-gradient(90deg, var(--g1), var(--g2)); transition: width .3s; }
+.card .remove { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; font-size: 18px; line-height: 1; color: var(--muted); opacity: 0; }
+.card:hover .remove, .card .remove:focus-visible { opacity: 1; }
+.card .remove:hover { background: var(--hover); color: var(--fg); }
+.confirm { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  border-radius: 16px; background: var(--card); text-align: center; padding: 16px; }
+.confirm div { display: flex; gap: 8px; }
+.confirm button { padding: 7px 16px; font-weight: 600; background: var(--hover); }
+.confirm button.yes { color: #fff; background: #d93025; }
+
+main { padding: 36px 24px 200px; }
+article { max-width: 70ch; margin: 0 auto; font-size: 19px; line-height: 1.7; overflow-wrap: break-word; }
+article h1 { font-size: 1.7em; line-height: 1.25; margin: 0 0 .8em; }
+article h2 { font-size: 1.3em; line-height: 1.3; margin: 1.8em 0 .5em; }
+article h3, article h4, article h5, article h6 { font-size: 1.08em; margin: 1.5em 0 .4em; }
+article p { margin: 0 0 1em; }
+article img { max-width: 100%; height: auto; }
+article a { color: var(--accent-text); }
+article table { border-collapse: collapse; margin: 1em 0; font-size: .9em; }
+article td, article th { border: 1px solid var(--line); padding: 6px 10px; vertical-align: top; }
+article td p, article th p, article li p { margin: 0; }
+article pre { overflow-x: auto; font-size: .85em; }
+article sup.reference { font-size: .7em; }
+
+.views { flex: none; display: flex; padding: 2px; border-radius: 999px; background: var(--hover); }
+.views button { padding: 5px 12px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.views button[aria-pressed="true"] { color: var(--fg); background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+
+/* Real pages (pages.js). The article is as big as its pages; --k is the zoom. */
+article.pages { max-width: none; font-size: initial; line-height: normal; }
+article.pdf { position: relative; --k: 1; }
+.pdf .page { position: absolute; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 6px 20px rgba(0, 0, 0, .08); }
+.pdf .page canvas { display: block; width: 100%; height: 100%; }
+/* The text over the pages: invisible, but there to highlight, click and select. Multiplying lets
+   the drawn words show through the highlight. */
+.pdf .text { position: absolute; inset: 0; mix-blend-mode: multiply; }
+.pdf .text > * { position: absolute; margin: 0; padding: 0; font: inherit; color: transparent; }
+.pdf .text span[data-wren-run] { position: absolute; white-space: pre; line-height: 1; transform-origin: 0 0; cursor: text; }
+.pdf .text ::selection { background: rgba(0, 100, 255, .25); color: transparent; }
+.pdf .text *::highlight(voice-reader-word) { color: transparent; }
+/* Wider spacing would move the text off the words on the page. */
+.pdf[data-voice-reader-root] .text :is(p, h1, h2, h3, h4, h5, h6),
+.pdf[data-voice-reader-root] .text span { letter-spacing: 0 !important; word-spacing: 0 !important; line-height: 1 !important; }
+.word .docx-wrapper { background: none; padding: 0 0 30px; }
+.word .docx-wrapper > section.docx { margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 6px 20px rgba(0, 0, 0, .08); }
+.word .docx { color: #000; }
+
+.drop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); backdrop-filter: blur(4px); }
+.drop div { padding: 18px 28px; border-radius: 16px; font-size: 18px; font-weight: 600; background: var(--card); box-shadow: 0 12px 40px rgba(0, 0, 0, .2); }
